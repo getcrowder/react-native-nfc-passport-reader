@@ -40,7 +40,9 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
   private val nfcPassportReader = NfcPassportReader(reactContext)
   private var adapter: NfcAdapter? = NfcAdapter.getDefaultAdapter(reactContext)
   private var bacKey: BACKeySpec? = null
-  private var includeImages = false
+  private var includeImages = true
+  private var skipPACE = true
+  private var skipCA = false
   private var isReading = false
   private val jsonToReactMap = JsonToReactMap()
   private var _promise: Promise? = null
@@ -87,8 +89,8 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
   override fun onHostResume() {
     try {
       adapter?.let {
-        reactApplicationContext.currentActivity?.let { activity ->
-          val intent = Intent(activity, activity::class.java).apply {
+        currentActivity?.let { activity ->
+          val intent = Intent(activity, activity.javaClass).apply {
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
           }
 
@@ -131,35 +133,43 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
   }
 
   override fun onHostDestroy() {
-    adapter?.disableForegroundDispatch(reactApplicationContext.currentActivity)
+    adapter?.disableForegroundDispatch(currentActivity)
   }
 
-  override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+  override fun onActivityResult(p0: Activity?, p1: Int, p2: Int, p3: Intent?) {
   }
 
-  override fun onNewIntent(intent: Intent) {
-    if (!isReading) return
+  override fun onNewIntent(p0: Intent?) {
+    p0?.let { intent ->
+      if (!isReading) return
 
-    sendEvent("onTagDiscovered", null)
+      sendEvent("onTagDiscovered", null)
 
-    if (NfcAdapter.ACTION_TECH_DISCOVERED == intent.action) {
-      val tag = intent.extras!!.getParcelable<Tag>(NfcAdapter.EXTRA_TAG)
+      if (NfcAdapter.ACTION_TECH_DISCOVERED == intent.action) {
+        val tag = intent.extras!!.getParcelable<Tag>(NfcAdapter.EXTRA_TAG)
 
-      if (listOf(*tag!!.techList).contains("android.nfc.tech.IsoDep")) {
-        CoroutineScope(Dispatchers.IO).launch {
-          try {
-            val result = nfcPassportReader.readPassport(IsoDep.get(tag), bacKey!!, includeImages)
+        if (listOf(*tag!!.techList).contains("android.nfc.tech.IsoDep")) {
+          CoroutineScope(Dispatchers.IO).launch {
+            try {
+              val result = nfcPassportReader.readPassport(
+                IsoDep.get(tag),
+                bacKey!!,
+                includeImages,
+                skipPACE,
+                skipCA
+              )
 
-            val map = result.serializeToMap()
-            val reactMap = jsonToReactMap.convertJsonToMap(JSONObject(map))
+              val map = result.serializeToMap()
+              val reactMap = jsonToReactMap.convertJsonToMap(JSONObject(map))
 
-            _promise?.resolve(reactMap)
-          } catch (e: Exception) {
-            reject(e)
+              _promise?.resolve(reactMap)
+            } catch (e: Exception) {
+              reject(e)
+            }
           }
+        } else {
+          reject(Exception("Tag tech is not IsoDep"))
         }
-      } else {
-        reject(Exception("Tag tech is not IsoDep"))
       }
     }
   }
@@ -181,8 +191,10 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
       _promise = promise
       val bacKey = readableMap.getMap("bacKey")
 
-      includeImages =
-        readableMap.hasKey("includeImages") && readableMap.getBoolean("includeImages")
+      // Read configuration options with defaults matching iOS behavior
+      includeImages = readableMap.hasKey("includeImages") && readableMap.getBoolean("includeImages")
+      skipPACE = !readableMap.hasKey("skipPACE") || readableMap.getBoolean("skipPACE")
+      skipCA = readableMap.hasKey("skipCA") && readableMap.getBoolean("skipCA")
 
       bacKey?.let {
         val documentNo = it.getString("documentNo")
@@ -202,7 +214,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
         }
 
         if (documentNo == null || expiryDate == null || birthDate == null) {
-          reject(Exception("BAC key is not valid"))
+          reject(Exception("BAC key is not valid: documentNo, expiryDate, and birthDate are required"))
           return
         }
 

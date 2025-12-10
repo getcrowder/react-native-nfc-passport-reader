@@ -18,13 +18,23 @@ class PassportUtil: ObservableObject {
     d.set(dateOfBirth, forKey: "dateOfBirth")
     d.set(expiryDate, forKey: "expiryDate")
 
-    // Calculate checksums
-    let passportNrChksum = calcCheckSum(passportNumber)
+    // Pad document number to 9 characters with '<' if needed (like JMRTD does on Android)
+    var paddedPassportNumber = passportNumber
+    while paddedPassportNumber.count < 9 {
+      paddedPassportNumber += "<"
+    }
+    
+    print("🔑 MRZ Key Generation:")
+    print("   Original doc number: \(passportNumber) (\(passportNumber.count) chars)")
+    print("   Padded doc number: \(paddedPassportNumber) (\(paddedPassportNumber.count) chars)")
+
+    // Calculate checksums using padded passport number
+    let passportNrChksum = calcCheckSum(paddedPassportNumber)
     let dateOfBirthChksum = calcCheckSum(dateOfBirth)
     let expiryDateChksum = calcCheckSum(expiryDate)
 
     let mrzKey =
-      "\(passportNumber)\(passportNrChksum)\(dateOfBirth)\(dateOfBirthChksum)\(expiryDate)\(expiryDateChksum)"
+      "\(paddedPassportNumber)\(passportNrChksum)\(dateOfBirth)\(dateOfBirthChksum)\(expiryDate)\(expiryDateChksum)"
 
     return mrzKey
   }

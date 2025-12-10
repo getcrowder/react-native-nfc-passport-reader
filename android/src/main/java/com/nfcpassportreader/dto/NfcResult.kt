@@ -1,15 +1,24 @@
 package com.nfcpassportreader.dto
 
 data class NfcResult(
-  var birthDate: String? = null,
-  var placeOfBirth: String? = null,
-  var documentNo: String? = null,
-  var expiryDate: String? = null,
-  var firstName: String? = null,
-  var gender: String? = null,
-  var identityNo: String? = null,
-  var lastName: String? = null,
-  var mrz: String? = null,
-  var nationality: String? = null,
-  var originalFacePhoto: NfcImage? = null,
+  var firstName: String = "",
+  var lastName: String = "",
+  var dateOfBirth: String = "",
+  var gender: String = "",
+  var nationality: String = "",
+  var personalNumber: String = "",
+  var placeOfBirth: String = "",
+  var documentNumber: String = "",
+  var dateOfExpiry: String = "",
+  var issuingAuthority: String = "",
+  var documentType: String = "",
+  var mrz: String = "",
+  var photo: String? = null,
+  var authentication: AuthenticationStatus = AuthenticationStatus()
+)
+
+data class AuthenticationStatus(
+  var method: String = "BAC",
+  var chipAuthenticationPassed: Boolean? = null,
+  var activeAuthenticationPassed: Boolean? = null
 )
