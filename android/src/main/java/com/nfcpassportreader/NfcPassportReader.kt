@@ -17,7 +17,9 @@ import org.jmrtd.lds.icao.DG11File
 import org.jmrtd.lds.icao.DG1File
 import org.jmrtd.lds.icao.DG2File
 import org.jmrtd.lds.iso19794.FaceImageInfo
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 
 class NfcPassportReader(context: Context) {
   private val bitmapUtil = BitmapUtil(context)
@@ -93,6 +95,8 @@ class NfcPassportReader(context: Context) {
       }
 
       val nfcResult = NfcResult()
+      val rawDataGroups = HashMap<String, String>()
+      nfcResult.dataGroups = rawDataGroups
 
       // Set authentication status
       // Note: Chip Authentication is not currently implemented on Android
@@ -101,12 +105,14 @@ class NfcPassportReader(context: Context) {
         method = if (paceSucceeded) "PACE" else "BAC",
         chipAuthenticationPassed = null // CA not implemented on Android yet
       )
-      
+
       Log.d("NFC_DEBUG", "🔐 Authentication Status: method=${nfcResult.authentication.method}, skipCA=$skipCA (CA not implemented on Android)")
 
       // Read DG1 (mandatory - contains MRZ data)
       val dg1In = service.getInputStream(PassportService.EF_DG1)
-      val dg1File = DG1File(dg1In)
+      val dg1Bytes = dg1In.readBytes()
+      rawDataGroups["DG1"] = Base64.encodeToString(dg1Bytes, Base64.NO_WRAP)
+      val dg1File = DG1File(ByteArrayInputStream(dg1Bytes))
       val mrzInfo = dg1File.mrzInfo
 
       // Extract data from MRZ first (as fallback)
@@ -135,7 +141,9 @@ class NfcPassportReader(context: Context) {
       // Try to read DG11 (optional data group that may contain additional info)
       try {
         val dg11In = service.getInputStream(PassportService.EF_DG11)
-        val dg11File = DG11File(dg11In)
+        val dg11Bytes = dg11In.readBytes()
+        rawDataGroups["DG11"] = Base64.encodeToString(dg11Bytes, Base64.NO_WRAP)
+        val dg11File = DG11File(ByteArrayInputStream(dg11Bytes))
         Log.d("NFC_DEBUG", "DG11 read successfully")
 
         if (!dg11File.nameOfHolder.isNullOrEmpty()) {
@@ -157,10 +165,32 @@ class NfcPassportReader(context: Context) {
         Log.d("NFC_DEBUG", "DG11 not available or failed to read: ${e.message}")
       }
 
+      // Try to read SOD
+      try {
+        val sodIn = service.getInputStream(PassportService.EF_SOD)
+        // Read the full stream
+        val buffer = ByteArrayOutputStream()
+        val data = ByteArray(16384)
+        var nRead: Int
+        while (sodIn.read(data, 0, data.size).also { nRead = it } != -1) {
+            buffer.write(data, 0, nRead)
+        }
+        buffer.flush()
+        val sodBytes = buffer.toByteArray()
+        
+        nfcResult.sod = Base64.encodeToString(sodBytes, Base64.NO_WRAP)
+        rawDataGroups["SOD"] = nfcResult.sod!!
+        Log.d("NFC_DEBUG", "SOD read successfully (\${sodBytes.size} bytes)")
+      } catch (e: Exception) {
+        Log.d("NFC_DEBUG", "SOD not available or failed to read: \${e.message}")
+      }
+      Log.d("NFC_DEBUG", "Including images: $includeImages")
       if (includeImages) {
         try {
           val dg2In = service.getInputStream(PassportService.EF_DG2)
-          val dg2File = DG2File(dg2In)
+          val dg2Bytes = dg2In.readBytes()
+          rawDataGroups["DG2"] = Base64.encodeToString(dg2Bytes, Base64.NO_WRAP)
+          val dg2File = DG2File(ByteArrayInputStream(dg2Bytes))
           val faceInfos = dg2File.faceInfos
           val allFaceImageInfos: MutableList<FaceImageInfo> = ArrayList()
           for (faceInfo in faceInfos) {
@@ -174,6 +204,9 @@ class NfcPassportReader(context: Context) {
             image.bitmap?.let { bitmap ->
               nfcResult.photo = bitmapToBase64Jpeg(bitmap)
             }
+          }
+          else {
+            Log.d("NFC_DEBUG", "No face images found")
           }
         } catch (e: Exception) {
           // DG2 (face image) is optional and may not be present or readable

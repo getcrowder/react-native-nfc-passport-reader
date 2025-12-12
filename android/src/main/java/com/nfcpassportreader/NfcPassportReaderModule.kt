@@ -192,7 +192,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
       val bacKey = readableMap.getMap("bacKey")
 
       // Read configuration options with defaults matching iOS behavior
-      includeImages = readableMap.hasKey("includeImages") && readableMap.getBoolean("includeImages")
+      includeImages = (readableMap.hasKey("includeImages") && readableMap.getBoolean("includeImages")) || true
       skipPACE = !readableMap.hasKey("skipPACE") || readableMap.getBoolean("skipPACE")
       skipCA = readableMap.hasKey("skipCA") && readableMap.getBoolean("skipCA")
 

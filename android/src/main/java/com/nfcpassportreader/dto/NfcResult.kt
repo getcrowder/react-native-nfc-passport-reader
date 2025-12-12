@@ -14,6 +14,8 @@ data class NfcResult(
   var documentType: String = "",
   var mrz: String = "",
   var photo: String? = null,
+  var sod: String? = null,
+  var dataGroups: Map<String, String>? = null,
   var authentication: AuthenticationStatus = AuthenticationStatus()
 )
 

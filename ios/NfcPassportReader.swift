@@ -146,6 +146,7 @@ class NfcPassportReader: NSObject {
           "documentType": passport.documentType,
           "mrz": passport.passportMRZ,
           "photo": NSNull(),
+          "sod": NSNull(),
           "authentication": authStatus
         ]
 
@@ -157,6 +158,20 @@ class NfcPassportReader: NSObject {
             result["photo"] = imageData.base64EncodedString()
           }
         }
+        
+        // Include SOD if available
+        if let sod = passport.getDataGroup(.SOD) {
+            let sodData = Data(sod.data)
+            result["sod"] = sodData.base64EncodedString()
+        }
+
+        // Include all raw DataGroups
+        let dataGroups = NSMutableDictionary()
+        for (id, dg) in passport.dataGroupsRead {
+             let dgData = Data(dg.data)
+             dataGroups[id.getName()] = dgData.base64EncodedString()
+        }
+        result["dataGroups"] = dataGroups
 
         resolve(result)
       } catch let error as NFCPassportReaderError {
