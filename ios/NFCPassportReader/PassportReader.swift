@@ -51,6 +51,7 @@ public class PassportReader : NSObject {
     private var readAllDatagroups = false
     private var skipSecureElements = true
     private var skipCA = false
+    private var skipAA = false
     private var skipPACE = false
     
     // Extended mode is used for reading eMRTD's that support extended length APDUs
@@ -90,12 +91,13 @@ public class PassportReader : NSObject {
         dataAmountToReadOverride = amount
     }
     
-    public func readPassport( mrzKey : String, tags : [DataGroupId] = [], aaChallenge: [UInt8]? = nil, skipSecureElements : Bool = true, skipCA : Bool = false, skipPACE : Bool = false, useExtendedMode : Bool = false, customDisplayMessage : ((NFCViewDisplayMessage) -> String?)? = nil) async throws -> NFCPassportModel {
+    public func readPassport( mrzKey : String, tags : [DataGroupId] = [], aaChallenge: [UInt8]? = nil, skipSecureElements : Bool = true, skipCA : Bool = false, skipAA : Bool = false, skipPACE : Bool = false, useExtendedMode : Bool = false, customDisplayMessage : ((NFCViewDisplayMessage) -> String?)? = nil) async throws -> NFCPassportModel {
         
         self.passport = NFCPassportModel()
         self.mrzKey = mrzKey
         self.aaChallenge = aaChallenge
         self.skipCA = skipCA
+        self.skipAA = skipAA
         self.skipPACE = skipPACE
         self.useExtendedMode = useExtendedMode
         
@@ -296,7 +298,9 @@ extension PassportReader {
         // Now to read the datagroups
         try await readDataGroups(tagReader: tagReader)
 
-        try await doActiveAuthenticationIfNeccessary(tagReader : tagReader)
+        if !skipAA {
+            try await doActiveAuthenticationIfNeccessary(tagReader : tagReader)
+        }
 
         self.updateReaderSessionMessage(alertMessage: NFCViewDisplayMessage.successfulRead)
         self.shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = true

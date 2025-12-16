@@ -30,7 +30,8 @@ class NfcPassportReader(context: Context) {
     bacKey: BACKeySpec,
     includeImages: Boolean,
     skipPACE: Boolean = true,
-    skipCA: Boolean = false
+    skipCA: Boolean = false,
+    skipAA: Boolean = false
   ): NfcResult {
     try {
       isoDep.timeout = 10000
@@ -103,10 +104,14 @@ class NfcPassportReader(context: Context) {
       // chipAuthenticationPassed = null means CA was not attempted
       nfcResult.authentication = AuthenticationStatus(
         method = if (paceSucceeded) "PACE" else "BAC",
-        chipAuthenticationPassed = null // CA not implemented on Android yet
+        chipAuthenticationPassed = null, // CA not implemented on Android yet
+        activeAuthenticationPassed = null // AA not implemented on Android yet (skipAA is accepted for API parity)
       )
 
-      Log.d("NFC_DEBUG", "🔐 Authentication Status: method=${nfcResult.authentication.method}, skipCA=$skipCA (CA not implemented on Android)")
+      Log.d(
+        "NFC_DEBUG",
+        "🔐 Authentication Status: method=${nfcResult.authentication.method}, skipCA=$skipCA, skipAA=$skipAA (CA/AA not implemented on Android)"
+      )
 
       // Read DG1 (mandatory - contains MRZ data)
       val dg1In = service.getInputStream(PassportService.EF_DG1)

@@ -35,8 +35,10 @@ export type NfcPassportReaderConfig = {
   includeImages?: boolean;
   /** Skip PACE authentication and use BAC instead (default: true) */
   skipPACE?: boolean;
-  /** Skip Chip Authentication - only applicable if PACE succeeds (default: false) */
+  /** Skip Chip Authentication (default: false) */
   skipCA?: boolean;
+  /** Skip Active Authentication (default: false) */
+  skipAA?: boolean;
   /**
    * Enable extended-length APDUs for some commands (default: false).
    * Useful for some passports where Active Authentication responses exceed 256 bytes.

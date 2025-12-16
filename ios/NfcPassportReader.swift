@@ -33,6 +33,7 @@ class NfcPassportReader: NSObject {
     let skipPACE = options["skipPACE"] as? Bool ?? true
     let skipCA = options["skipCA"] as? Bool ?? false
     let useExtendedMode = options["useExtendedMode"] as? Bool ?? false
+    let skipAA = options["skipAA"] as? Bool ?? false
 
     let documentNo = bacKey?["documentNo"] as? String
     let expiryDate = bacKey?["expiryDate"] as? String
@@ -94,6 +95,7 @@ class NfcPassportReader: NSObject {
           mrzKey: mrzKey,
           tags: finalTags,
           skipCA: skipCA,
+          skipAA: skipAA,
           skipPACE: skipPACE,
           useExtendedMode: useExtendedMode,
           customDisplayMessage: customMessageHandler
@@ -108,6 +110,7 @@ class NfcPassportReader: NSObject {
         print("   - Active Auth (AA) Passed: \(passport.activeAuthenticationPassed)")
         print("   - Is AA Supported (DG15): \(passport.activeAuthenticationSupported)")
         print("   - skipCA param: \(skipCA)")
+        print("   - skipAA param: \(skipAA)")
         
         let authMethod: String
         if passport.PACEStatus == .success {
@@ -130,7 +133,7 @@ class NfcPassportReader: NSObject {
           break
         }
         
-        if passport.activeAuthenticationSupported {
+        if passport.activeAuthenticationSupported && !skipAA {
           authStatus["activeAuthenticationPassed"] = passport.activeAuthenticationPassed
         }
 

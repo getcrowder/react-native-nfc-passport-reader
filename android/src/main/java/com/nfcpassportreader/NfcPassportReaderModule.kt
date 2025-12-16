@@ -43,6 +43,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
   private var includeImages = true
   private var skipPACE = true
   private var skipCA = false
+  private var skipAA = false
   private var isReading = false
   private val jsonToReactMap = JsonToReactMap()
   private var _promise: Promise? = null
@@ -156,7 +157,8 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
                 bacKey!!,
                 includeImages,
                 skipPACE,
-                skipCA
+                skipCA,
+                skipAA
               )
 
               val map = result.serializeToMap()
@@ -195,6 +197,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
       includeImages = (readableMap.hasKey("includeImages") && readableMap.getBoolean("includeImages")) || true
       skipPACE = !readableMap.hasKey("skipPACE") || readableMap.getBoolean("skipPACE")
       skipCA = readableMap.hasKey("skipCA") && readableMap.getBoolean("skipCA")
+      skipAA = readableMap.hasKey("skipAA") && readableMap.getBoolean("skipAA")
 
       bacKey?.let {
         val documentNo = it.getString("documentNo")
