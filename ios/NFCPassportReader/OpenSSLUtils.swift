@@ -13,6 +13,17 @@ import CryptoTokenKit
 @available(iOS 13, macOS 10.15, *)
 public class OpenSSLUtils {
     private static var loaded = false
+
+    // OpenSSL 3 removed the typed sk_* accessors from the public API in favor of OPENSSL_sk_*.
+    // Keep call sites stable by providing Swift helpers.
+    static func sk_X509_num(_ sk : OpaquePointer!) -> Int32 {
+        return OPENSSL_sk_num(ossl_check_const_X509_sk_type(sk))
+    }
+    
+    static func sk_X509_value(_ sk : OpaquePointer!, _ idx : Int32 ) -> OpaquePointer! {
+        let p = OPENSSL_sk_value(ossl_check_const_X509_sk_type(sk), (idx))
+        return OpaquePointer(p)
+    }
     
     /// Returns any OpenSSL Error as a String
     public static func getOpenSSLError() -> String {
@@ -152,16 +163,24 @@ public class OpenSSLUtils {
         X509_STORE_set_verify_cb(cert_ctx) { (ok, ctx) -> Int32 in
             let cert_error = X509_STORE_CTX_get_error(ctx)
             
+            var ret : Int32 = ok
             if ok == 0 {
                 let errVal = X509_verify_cert_error_string(Int(cert_error))
                 let val = errVal!.withMemoryRebound(to: CChar.self, capacity: 1000) { (ptr) in
                     return String(cString: ptr)
                 }
                 
-                //Logger.openSSL.error("error \(cert_error) at \(X509_STORE_CTX_get_error_depth(ctx)) depth lookup:\(val)" )
+                // OpenSSL 3.x is stricter about EC explicit parameters. ICAO expects implicit params,
+                // so accept this specific error to avoid breaking SOD X509 verification.
+                if cert_error == X509_V_ERR_EC_KEY_EXPLICIT_PARAMS {
+                    ret = 1
+                } else {
+                    //Logger.openSSL.error("error \(cert_error) at \(X509_STORE_CTX_get_error_depth(ctx)) depth lookup:\(val)" )
+                    _ = val
+                }
             }
             
-            return ok;
+            return ret;
         }
         
         guard let lookup = X509_STORE_add_lookup(cert_ctx, X509_LOOKUP_file()) else { return .failure(OpenSSLError.UnableToVerifyX509CertificateForSOD("Unable to add lookup to store")) }
@@ -572,7 +591,7 @@ public class OpenSSLUtils {
     public static func getPublicKeyData(from key:OpaquePointer) -> [UInt8]? {
         var data : [UInt8] = []
         // Get Key type
-        let v = EVP_PKEY_base_id( key )
+        let v = EVP_PKEY_get_base_id( key )
         if v == EVP_PKEY_DH || v == EVP_PKEY_DHX {
             guard let dh = EVP_PKEY_get0_DH(key) else {
                 return nil
@@ -608,7 +627,7 @@ public class OpenSSLUtils {
     public static func decodePublicKeyFromBytes(pubKeyData: [UInt8], params: OpaquePointer) -> OpaquePointer? {
         var pubKey : OpaquePointer?
         
-        let keyType = EVP_PKEY_base_id( params )
+        let keyType = EVP_PKEY_get_base_id( params )
         if keyType == EVP_PKEY_DH || keyType == EVP_PKEY_DHX {
             
             let dhKey = DH_new()
@@ -657,7 +676,7 @@ public class OpenSSLUtils {
         // OR I'm misunderstanding something (which is more possible)
         // Works fine though for ECDH keys
         var secret : [UInt8]
-        let keyType = EVP_PKEY_base_id( privateKeyPair )
+        let keyType = EVP_PKEY_get_base_id( privateKeyPair )
         if keyType == EVP_PKEY_DH || keyType == EVP_PKEY_DHX {
             // Get bn for public key
             let dh = EVP_PKEY_get1_DH(privateKeyPair);

@@ -32,6 +32,7 @@ class NfcPassportReader: NSObject {
     let includeImages = options["includeImages"] as? Bool ?? true
     let skipPACE = options["skipPACE"] as? Bool ?? true
     let skipCA = options["skipCA"] as? Bool ?? false
+    let useExtendedMode = options["useExtendedMode"] as? Bool ?? false
 
     let documentNo = bacKey?["documentNo"] as? String
     let expiryDate = bacKey?["expiryDate"] as? String
@@ -94,6 +95,7 @@ class NfcPassportReader: NSObject {
           tags: finalTags,
           skipCA: skipCA,
           skipPACE: skipPACE,
+          useExtendedMode: useExtendedMode,
           customDisplayMessage: customMessageHandler
         )
         

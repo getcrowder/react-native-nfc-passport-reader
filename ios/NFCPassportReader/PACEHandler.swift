@@ -107,8 +107,11 @@ public class PACEHandler {
         _ = try await tagReader.sendMSESetATMutualAuth(oid: paceOID, keyType: paceKeyType)
             
         let decryptedNonce = try await self.doStep1()
+        // Pointers returned from OpenSSL need explicit freeing.
         let ephemeralParams = try await self.doStep2(passportNonce: decryptedNonce)
+        defer { EVP_PKEY_free( ephemeralParams ) }
         let (ephemeralKeyPair, passportPublicKey) = try await self.doStep3KeyExchange(ephemeralParams: ephemeralParams)
+        defer { EVP_PKEY_free(ephemeralKeyPair); EVP_PKEY_free(passportPublicKey) }
         let (encKey, macKey) = try await self.doStep4KeyAgreement( pcdKeyPair: ephemeralKeyPair, passportPublicKey: passportPublicKey)
         try self.paceCompleted( ksEnc: encKey, ksMac: macKey )
         //Logger.pace.debug("PACE SUCCESSFUL" )
@@ -248,21 +251,31 @@ public class PACEHandler {
     func doStep3KeyExchange(ephemeralParams: OpaquePointer) async throws -> (OpaquePointer, OpaquePointer) {
         //Logger.pace.debug( "Doing PACE Step3 - Key Exchange")
 
-        // Generate ephemeral keypair from ephemeralParams
-        var ephKeyPair : OpaquePointer? = nil
-        let pctx = EVP_PKEY_CTX_new(ephemeralParams, nil)
-        EVP_PKEY_keygen_init(pctx)
-        EVP_PKEY_keygen(pctx, &ephKeyPair)
-        EVP_PKEY_CTX_free(pctx)
-                
+        // OpenSSL 3.x keygen from params can behave differently; build EC keypair explicitly.
+        guard let ephEcKey = EC_KEY_new() else {
+            throw NFCPassportReaderError.PACEError( "Step3 KeyEx", "Failed to create EC key" )
+        }
+        defer { EC_KEY_free(ephEcKey) }
+
+        guard
+            let ecParams = EVP_PKEY_get0_EC_KEY(ephemeralParams),
+            let group = EC_KEY_get0_group(ecParams),
+            EC_KEY_set_group(ephEcKey, group) == 1,
+            EC_KEY_generate_key(ephEcKey) == 1 else {
+            throw NFCPassportReaderError.PACEError( "Step3 KeyEx", "Failed to generate EC key" )
+        }
+
+        var ephKeyPair = EVP_PKEY_new()
         guard let ephemeralKeyPair = ephKeyPair else {
             throw NFCPassportReaderError.PACEError( "Step3 KeyEx", "Unable to get create ephermeral key pair" )
         }
+        defer { EVP_PKEY_free(ephKeyPair) }
+
+        guard EVP_PKEY_set1_EC_KEY(ephemeralKeyPair, ephEcKey) == 1 else {
+            throw NFCPassportReaderError.PACEError( "Step3 KeyEx", "Failed to set ephemeral key pair private key" )
+        }
         
         //Logger.pace.debug( "Generated Ephemeral key pair")
-
-        // We've finished with the ephemeralParams now - we can now free it
-        EVP_PKEY_free( ephemeralParams )
 
         guard let publicKey = OpenSSLUtils.getPublicKeyData( from: ephemeralKeyPair ) else {
             throw NFCPassportReaderError.PACEError( "Step3 KeyEx", "Unable to get public key from ephermeral key pair" )
@@ -279,6 +292,8 @@ public class PACEHandler {
         }
 
         //Logger.pace.debug( "Received passports ephemeral public key - \(binToHexRep(passportEncodedPublicKey!, asArray: true))" )
+        // Prevent defer from freeing the returned key on success.
+        defer { ephKeyPair = nil }
         return (ephemeralKeyPair, passportPublicKey)
     }
     
@@ -561,7 +576,7 @@ extension PACEHandler {
             throw NFCPassportReaderError.InvalidDataPassed("Unable to get public key data")
         }
 
-        let keyType = EVP_PKEY_base_id( key )
+        let keyType = EVP_PKEY_get_base_id( key )
         let tag : TKTLVTag
         if keyType == EVP_PKEY_DH || keyType == EVP_PKEY_DHX {
             tag = 0x84

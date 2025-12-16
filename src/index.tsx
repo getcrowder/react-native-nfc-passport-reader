@@ -31,12 +31,17 @@ export type BACKey = {
 
 export type NfcPassportReaderConfig = {
   bacKey: BACKey;
-  /** Whether to include face photo from DG2 (default: false) */
+  /** Whether to include face photo from DG2 (default: true) */
   includeImages?: boolean;
   /** Skip PACE authentication and use BAC instead (default: true) */
   skipPACE?: boolean;
   /** Skip Chip Authentication - only applicable if PACE succeeds (default: false) */
   skipCA?: boolean;
+  /**
+   * Enable extended-length APDUs for some commands (default: false).
+   * Useful for some passports where Active Authentication responses exceed 256 bytes.
+   */
+  useExtendedMode?: boolean;
 };
 
 export type AuthenticationStatus = {

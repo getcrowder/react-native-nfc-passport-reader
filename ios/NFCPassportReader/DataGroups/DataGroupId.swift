@@ -56,7 +56,8 @@ public enum DataGroupId : Int, CaseIterable {
     
     static public func getIDFromName( name: String ) -> DataGroupId {
         switch( name ) {
-            case "COM": return .COM
+            // DataGroupParser uses "Common" for COM; support both spellings.
+            case "COM", "Common": return .COM
             case "DG1": return .DG1
             case "DG2": return .DG2
             case "DG3": return .DG3
@@ -73,7 +74,8 @@ public enum DataGroupId : Int, CaseIterable {
             case "DG14": return .DG14
             case "DG15": return .DG15
             case "DG16": return .DG16
-            case "SOD": return .SOD
+            // DataGroupParser uses "SecurityData" for SOD; support both spellings.
+            case "SOD", "SecurityData": return .SOD
             default: return .Unknown
         }
     }
