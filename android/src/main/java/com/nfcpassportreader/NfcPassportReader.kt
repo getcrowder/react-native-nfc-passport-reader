@@ -34,7 +34,9 @@ class NfcPassportReader(context: Context) {
     skipAA: Boolean = false
   ): NfcResult {
     try {
-      isoDep.timeout = 10000
+      // Passport BAC/DG reads can take longer than typical tag scans; a low timeout
+      // can surface as "Tag was lost" even when the device is held still.
+      isoDep.timeout = 30000
 
       val cardService = CardService.getInstance(isoDep)
       cardService.open()

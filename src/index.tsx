@@ -1,4 +1,9 @@
-import { DeviceEventEmitter, NativeModules, Platform } from 'react-native';
+import {
+  DeviceEventEmitter,
+  NativeModules,
+  Platform,
+  type EmitterSubscription,
+} from 'react-native';
 
 const LINKING_ERROR =
   `The package 'react-native-nfc-passport-reader' doesn't seem to be linked. Make sure: \n\n` +
@@ -120,10 +125,13 @@ export default class NfcPassportReader {
    * Add listener for when an NFC tag is discovered (Android only)
    * On iOS, tag discovery is handled by the system NFC sheet
    */
-  static addOnTagDiscoveredListener(callback: () => void): void {
+  static addOnTagDiscoveredListener(
+    callback: () => void
+  ): EmitterSubscription | undefined {
     if (Platform.OS === 'android') {
-      this.addListener(NfcPassportReaderEvent.TAG_DISCOVERED, callback);
+      return this.addListener(NfcPassportReaderEvent.TAG_DISCOVERED, callback);
     }
+    return undefined;
   }
 
   /**
@@ -132,10 +140,11 @@ export default class NfcPassportReader {
    */
   static addOnNfcStateChangedListener(
     callback: (state: 'off' | 'on') => void
-  ): void {
+  ): EmitterSubscription | undefined {
     if (Platform.OS === 'android') {
-      this.addListener(NfcPassportReaderEvent.NFC_STATE_CHANGED, callback);
+      return this.addListener(NfcPassportReaderEvent.NFC_STATE_CHANGED, callback);
     }
+    return undefined;
   }
 
   /**
@@ -176,8 +185,8 @@ export default class NfcPassportReader {
   private static addListener(
     event: NfcPassportReaderEvent,
     callback: (data: any) => void
-  ): void {
-    DeviceEventEmitter.addListener(event, callback);
+  ): EmitterSubscription {
+    return DeviceEventEmitter.addListener(event, callback);
   }
 
   /**

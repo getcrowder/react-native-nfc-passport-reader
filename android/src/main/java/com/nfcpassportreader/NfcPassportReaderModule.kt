@@ -45,6 +45,8 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
   private var skipCA = false
   private var skipAA = false
   private var isReading = false
+  private var isProcessingTag = false
+  private var isForegroundDispatchEnabled = false
   private val jsonToReactMap = JsonToReactMap()
   private var _promise: Promise? = null
   private val inputDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -58,6 +60,54 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
     reactApplicationContext.registerReceiver(NfcStatusReceiver(), filter)
   }
 
+  private fun ensureAdapter() {
+    if (adapter == null) {
+      adapter = NfcAdapter.getDefaultAdapter(reactApplicationContext)
+    }
+  }
+
+  private fun enableForegroundDispatchIfNeeded() {
+    if (!isReading) return
+    if (isForegroundDispatchEnabled) return
+
+    ensureAdapter()
+    val activity = currentActivity ?: return
+    val nfcAdapter = adapter ?: return
+    if (!nfcAdapter.isEnabled) return
+
+    try {
+      val intent = Intent(activity, activity.javaClass).apply {
+        addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+      }
+
+      val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        PendingIntent.getActivity(activity, 0, intent, PendingIntent.FLAG_MUTABLE)
+      } else {
+        PendingIntent.getActivity(activity, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT)
+      }
+
+      val techList = arrayOf(arrayOf("android.nfc.tech.IsoDep"))
+      nfcAdapter.enableForegroundDispatch(activity, pendingIntent, null, techList)
+      isForegroundDispatchEnabled = true
+    } catch (e: Exception) {
+      Log.e("NfcPassportReader", e.message ?: "Unknown Error")
+    }
+  }
+
+  private fun disableForegroundDispatchIfNeeded() {
+    if (!isForegroundDispatchEnabled) return
+
+    ensureAdapter()
+    val activity = currentActivity ?: return
+    try {
+      adapter?.disableForegroundDispatch(activity)
+    } catch (e: Exception) {
+      Log.e("NfcPassportReader", e.message ?: "Unknown Error")
+    } finally {
+      isForegroundDispatchEnabled = false
+    }
+  }
+
   inner class NfcStatusReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
       if (NfcAdapter.ACTION_ADAPTER_STATE_CHANGED == intent?.action) {
@@ -65,10 +115,15 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
         when (state) {
           NfcAdapter.STATE_OFF -> {
             sendEvent("onNfcStateChanged", "off")
+            if (isReading) {
+              reject(Exception("NFC disabled"))
+            }
           }
 
           NfcAdapter.STATE_ON -> {
             sendEvent("onNfcStateChanged", "on")
+            ensureAdapter()
+            enableForegroundDispatchIfNeeded()
           }
 
           NfcAdapter.STATE_TURNING_OFF -> {
@@ -88,53 +143,20 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
   }
 
   override fun onHostResume() {
-    try {
-      adapter?.let {
-        currentActivity?.let { activity ->
-          val intent = Intent(activity, activity.javaClass).apply {
-            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-          }
-
-          val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            PendingIntent
-              .getActivity(
-                activity, 0,
-                intent,
-                PendingIntent.FLAG_MUTABLE
-              )
-          } else {
-            PendingIntent
-              .getActivity(
-                activity, 0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT
-              )
-          }
-
-          val filter = arrayOf(arrayOf("android.nfc.tech.IsoDep"))
-
-          it.enableForegroundDispatch(
-            activity,
-            pendingIntent,
-            null,
-            filter
-          )
-        } ?: run {
-          Log.e("NfcPassportReader", "CurrentActivity is null")
-        }
-      } ?: run {
-        Log.e("NfcPassportReader", "NfcAdapter is null")
-      }
-    } catch (e: Exception) {
-      Log.e("NfcPassportReader", e.message ?: "Unknown Error")
+    ensureAdapter()
+    if (isReading) {
+      enableForegroundDispatchIfNeeded()
+    } else {
+      disableForegroundDispatchIfNeeded()
     }
   }
 
   override fun onHostPause() {
+    disableForegroundDispatchIfNeeded()
   }
 
   override fun onHostDestroy() {
-    adapter?.disableForegroundDispatch(currentActivity)
+    disableForegroundDispatchIfNeeded()
   }
 
   override fun onActivityResult(p0: Activity?, p1: Int, p2: Int, p3: Intent?) {
@@ -143,13 +165,25 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
   override fun onNewIntent(p0: Intent?) {
     p0?.let { intent ->
       if (!isReading) return
+      if (isProcessingTag) return
+      isProcessingTag = true
 
       sendEvent("onTagDiscovered", null)
 
       if (NfcAdapter.ACTION_TECH_DISCOVERED == intent.action) {
-        val tag = intent.extras!!.getParcelable<Tag>(NfcAdapter.EXTRA_TAG)
+        val tag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+          intent.extras?.getParcelable(NfcAdapter.EXTRA_TAG, Tag::class.java)
+        } else {
+          @Suppress("DEPRECATION")
+          intent.extras?.getParcelable(NfcAdapter.EXTRA_TAG) as? Tag
+        }
 
-        if (listOf(*tag!!.techList).contains("android.nfc.tech.IsoDep")) {
+        if (tag == null) {
+          reject(Exception("NFC tag is null"))
+          return
+        }
+
+        if (listOf(*tag.techList).contains("android.nfc.tech.IsoDep")) {
           CoroutineScope(Dispatchers.IO).launch {
             try {
               val result = nfcPassportReader.readPassport(
@@ -165,6 +199,11 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
               val reactMap = jsonToReactMap.convertJsonToMap(JSONObject(map))
 
               _promise?.resolve(reactMap)
+              _promise = null
+              isReading = false
+              isProcessingTag = false
+              bacKey = null
+              disableForegroundDispatchIfNeeded()
             } catch (e: Exception) {
               reject(e)
             }
@@ -185,6 +224,9 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
     isReading = false
     bacKey = null
     _promise?.reject(e)
+    _promise = null
+    isProcessingTag = false
+    disableForegroundDispatchIfNeeded()
   }
 
   @ReactMethod
@@ -226,6 +268,10 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
         )
 
         isReading = true
+        isProcessingTag = false
+        currentActivity?.runOnUiThread {
+          enableForegroundDispatchIfNeeded()
+        }
       } ?: run {
         reject(Exception("BAC key is null"))
       }
@@ -236,8 +282,16 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun stopReading() {
+    if (isReading) {
+      _promise?.reject("UserCanceled", "Reading stopped")
+      _promise = null
+    }
     isReading = false
     bacKey = null
+    isProcessingTag = false
+    currentActivity?.runOnUiThread {
+      disableForegroundDispatchIfNeeded()
+    }
   }
 
   @ReactMethod
