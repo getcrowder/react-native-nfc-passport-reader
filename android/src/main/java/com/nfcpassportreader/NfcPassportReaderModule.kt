@@ -29,7 +29,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.jmrtd.BACKey
 import org.jmrtd.BACKeySpec
-import org.jmrtd.lds.icao.MRZInfo
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -37,10 +36,9 @@ import java.util.Locale
 class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext), LifecycleEventListener, ActivityEventListener {
 
-  private val nfcPassportReader = NfcPassportReader(reactContext)
+  private val nfcPassportReader = NfcPassportReader()
   private var adapter: NfcAdapter? = NfcAdapter.getDefaultAdapter(reactContext)
   private var bacKey: BACKeySpec? = null
-  private var includeImages = true
   private var skipPACE = true
   private var skipCA = false
   private var skipAA = false
@@ -189,7 +187,6 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
               val result = nfcPassportReader.readPassport(
                 IsoDep.get(tag),
                 bacKey!!,
-                includeImages,
                 skipPACE,
                 skipCA,
                 skipAA
@@ -235,8 +232,6 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
       _promise = promise
       val bacKey = readableMap.getMap("bacKey")
 
-      // Read configuration options with defaults matching iOS behavior
-      includeImages = (readableMap.hasKey("includeImages") && readableMap.getBoolean("includeImages")) || true
       skipPACE = !readableMap.hasKey("skipPACE") || readableMap.getBoolean("skipPACE")
       skipCA = readableMap.hasKey("skipCA") && readableMap.getBoolean("skipCA")
       skipAA = readableMap.hasKey("skipAA") && readableMap.getBoolean("skipAA")

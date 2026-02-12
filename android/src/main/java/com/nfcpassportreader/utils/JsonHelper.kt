@@ -26,7 +26,7 @@ inline fun <I, reified O> I.convert(): O {
     .registerTypeHierarchyAdapter(LocalDateTime::class.java, LocalDateTimeSerializer())
     .registerTypeAdapter(NfcImage::class.java, NfcImageSerializer())
     .registerTypeAdapter(AuthenticationStatus::class.java, AuthenticationStatusSerializer())
-    .serializeNulls() // Ensure null values are serialized (for photo field)
+    .serializeNulls()
     .create()
   val json = gson.toJson(this)
   return gson.fromJson(json, object : TypeToken<O>() {}.type)

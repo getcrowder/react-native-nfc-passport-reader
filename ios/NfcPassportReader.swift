@@ -2,7 +2,6 @@ import CoreNFC
 import Foundation
 import OpenSSL
 import React
-import UIKit
 
 @objc(NfcPassportReader)
 class NfcPassportReader: NSObject {
@@ -29,7 +28,6 @@ class NfcPassportReader: NSObject {
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     let bacKey = options["bacKey"] as? NSDictionary
-    let includeImages = options["includeImages"] as? Bool ?? true
     let skipPACE = options["skipPACE"] as? Bool ?? true
     let skipCA = options["skipCA"] as? Bool ?? false
     let useExtendedMode = options["useExtendedMode"] as? Bool ?? false
@@ -138,37 +136,8 @@ class NfcPassportReader: NSObject {
         }
 
         let result: NSMutableDictionary = [
-          "firstName": passport.firstName,
-          "lastName": passport.lastName,
-          "dateOfBirth": passport.dateOfBirth.convertToYYYYMMDD() ?? "",
-          "gender": passport.gender,
-          "nationality": passport.nationality,
-          "personalNumber": passport.personalNumber ?? "",
-          "placeOfBirth": passport.placeOfBirth ?? "",
-          "documentNumber": passport.documentNumber,
-          "dateOfExpiry": passport.documentExpiryDate.convertToYYYYMMDD() ?? "",
-          "issuingAuthority": passport.issuingAuthority,
-          "documentType": passport.documentType,
-          "mrz": passport.passportMRZ,
-          "photo": NSNull(),
-          "sod": NSNull(),
           "authentication": authStatus
         ]
-
-        // Include photo if requested and available
-        if includeImages {
-          if let passportImage = passport.passportImage,
-             let imageData = passportImage.jpegData(compressionQuality: 0.8)
-          {
-            result["photo"] = imageData.base64EncodedString()
-          }
-        }
-        
-        // Include SOD if available
-        if let sod = passport.getDataGroup(.SOD) {
-            let sodData = Data(sod.data)
-            result["sod"] = sodData.base64EncodedString()
-        }
 
         // Include all raw DataGroups
         let dataGroups = NSMutableDictionary()

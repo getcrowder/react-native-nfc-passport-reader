@@ -1,22 +1,8 @@
 package com.nfcpassportreader.dto
 
 data class NfcResult(
-  var firstName: String = "",
-  var lastName: String = "",
-  var dateOfBirth: String = "",
-  var gender: String = "",
-  var nationality: String = "",
-  var personalNumber: String = "",
-  var placeOfBirth: String = "",
-  var documentNumber: String = "",
-  var dateOfExpiry: String = "",
-  var issuingAuthority: String = "",
-  var documentType: String = "",
-  var mrz: String = "",
-  var photo: String? = null,
-  var sod: String? = null,
-  var dataGroups: Map<String, String>? = null,
-  var authentication: AuthenticationStatus = AuthenticationStatus()
+  var authentication: AuthenticationStatus = AuthenticationStatus(),
+  var dataGroups: Map<String, String> = emptyMap()
 )
 
 data class AuthenticationStatus(

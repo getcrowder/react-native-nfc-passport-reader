@@ -36,8 +36,6 @@ export type BACKey = {
 
 export type NfcPassportReaderConfig = {
   bacKey: BACKey;
-  /** Whether to include face photo from DG2 (default: true) */
-  includeImages?: boolean;
   /** Skip PACE authentication and use BAC instead (default: true) */
   skipPACE?: boolean;
   /** Skip Chip Authentication (default: false) */
@@ -68,30 +66,12 @@ export type AuthenticationStatus = {
 };
 
 export type NfcPassportResult = {
-  firstName: string;
-  lastName: string;
-  dateOfBirth: string;
-  gender: string;
-  nationality: string;
-  personalNumber: string;
-  placeOfBirth: string;
-  documentNumber: string;
-  dateOfExpiry: string;
-  issuingAuthority: string;
-  documentType: string;
-  mrz: string;
-  photo: string | null;
-  /**
-   * Security Object Document (SOD) in Base64 format
-   * Contains hashes of data groups and the digital signature
-   */
-  sod: string | null;
+  authentication: AuthenticationStatus;
   /**
    * Raw Data Groups (Base64 encoded)
    * Keys are data group names (e.g. "DG1", "DG2")
    */
-  dataGroups?: { [key: string]: string };
-  authentication: AuthenticationStatus;
+  dataGroups: { [key: string]: string };
 };
 
 // Legacy type alias for backwards compatibility
