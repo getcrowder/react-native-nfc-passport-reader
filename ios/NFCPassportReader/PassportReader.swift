@@ -93,6 +93,14 @@ public class PassportReader : NSObject {
     
     public func readPassport( mrzKey : String, tags : [DataGroupId] = [], aaChallenge: [UInt8]? = nil, skipSecureElements : Bool = true, skipCA : Bool = false, skipAA : Bool = false, skipPACE : Bool = false, useExtendedMode : Bool = false, customDisplayMessage : ((NFCViewDisplayMessage) -> String?)? = nil) async throws -> NFCPassportModel {
         
+        // Clean up any previous session before starting a new one
+        self.shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = false
+        if let existingSession = self.readerSession {
+            existingSession.invalidate()
+            self.readerSession = nil
+        }
+        self.nfcContinuation = nil
+
         self.passport = NFCPassportModel()
         self.mrzKey = mrzKey
         self.aaChallenge = aaChallenge
@@ -100,7 +108,7 @@ public class PassportReader : NSObject {
         self.skipAA = skipAA
         self.skipPACE = skipPACE
         self.useExtendedMode = useExtendedMode
-        
+
         self.dataGroupsToRead.removeAll()
         self.dataGroupsToRead.append( contentsOf:tags)
         self.nfcViewDisplayMessageHandler = customDisplayMessage
@@ -147,15 +155,17 @@ extension PassportReader : NFCTagReaderSessionDelegate {
     }
     
     public func tagReaderSession(_ session: NFCTagReaderSession, didInvalidateWithError error: Error) {
-        // If necessary, you may handle the error. Note session is no longer valid.
-        // You must create a new session to restart RF polling.
-        //Logger.passportReader.debug( "tagReaderSession:didInvalidateWithError - \(error.localizedDescription)" )
-        self.readerSession?.invalidate()
+        // Ignore callbacks from previous/stale sessions to prevent race conditions
+        // where an old session's invalidation cancels a new session's continuation.
+        guard session === self.readerSession else {
+            self.shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = false
+            return
+        }
         self.readerSession = nil
 
         if let readerError = error as? NFCReaderError, readerError.code == NFCReaderError.readerSessionInvalidationErrorUserCanceled
             && self.shouldNotReportNextReaderSessionInvalidationErrorUserCanceled {
-            
+
             self.shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = false
         } else {
             var userError = NFCPassportReaderError.UnexpectedError
@@ -247,7 +257,8 @@ extension PassportReader : NFCTagReaderSessionDelegate {
     }
     
     func updateReaderSessionMessage(alertMessage: NFCViewDisplayMessage ) {
-        self.readerSession?.alertMessage = self.nfcViewDisplayMessageHandler?(alertMessage) ?? alertMessage.description
+        guard let session = self.readerSession else { return }
+        session.alertMessage = self.nfcViewDisplayMessageHandler?(alertMessage) ?? alertMessage.description
     }
 }
 
