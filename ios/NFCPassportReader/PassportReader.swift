@@ -45,6 +45,7 @@ public class PassportReader : NSObject {
     private var passport : NFCPassportModel = NFCPassportModel()
     
     private var readerSession: NFCTagReaderSession?
+    private var successPassport: NFCPassportModel?
     private var currentlyReadingDataGroup : DataGroupId?
     
     private var dataGroupsToRead : [DataGroupId] = []
@@ -102,6 +103,7 @@ public class PassportReader : NSObject {
         self.nfcContinuation = nil
 
         self.passport = NFCPassportModel()
+        self.successPassport = nil
         self.mrzKey = mrzKey
         self.aaChallenge = aaChallenge
         self.skipCA = skipCA
@@ -167,6 +169,13 @@ extension PassportReader : NFCTagReaderSessionDelegate {
             && self.shouldNotReportNextReaderSessionInvalidationErrorUserCanceled {
 
             self.shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = false
+
+            // NFC sheet dismissed after a successful read — resolve the pending continuation now.
+            if let passport = self.successPassport {
+                self.successPassport = nil
+                nfcContinuation?.resume(returning: passport)
+                nfcContinuation = nil
+            }
         } else {
             var userError = NFCPassportReaderError.UnexpectedError
             if let readerError = error as? NFCReaderError {
@@ -234,8 +243,9 @@ extension PassportReader : NFCTagReaderSessionDelegate {
                 }
                 
                 let passportModel = try await self.startReading( tagReader : tagReader)
-                nfcContinuation?.resume(returning: passportModel)
-                nfcContinuation = nil
+                // Store the result — the continuation will be resumed in
+                // didInvalidateWithError once the iOS NFC sheet finishes dismissing.
+                self.successPassport = passportModel
 
                 
             } catch let error as NFCPassportReaderError {
