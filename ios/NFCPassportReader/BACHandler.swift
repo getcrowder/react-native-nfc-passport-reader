@@ -38,27 +38,24 @@ public class BACHandler {
         guard let tagReader = self.tagReader else {
             throw NFCPassportReaderError.NoConnectedTag
         }
-        
+
         //Logger.bac.debug( "BACHandler - deriving Document Basic Access Keys" )
         _ = try self.deriveDocumentBasicAccessKeys(mrz: mrzKey)
-        
+
         // Make sure we clear secure messaging (could happen if we read an invalid DG or we hit a secure error
         tagReader.secureMessaging = nil
-        
+
         // get Challenge
         //Logger.bac.debug( "BACHandler - Getting initial challenge" )
         let response = try await tagReader.getChallenge()
-    
-        //Logger.bac.debug( "DATA - \(response.data)" )
-        
+
         //Logger.bac.debug( "BACHandler - Doing mutual authentication" )
         let cmd_data = self.authentication(rnd_icc: [UInt8](response.data))
         let maResponse = try await tagReader.doMutualAuthentication(cmdData: Data(cmd_data))
-        //Logger.bac.debug( "DATA - \(maResponse.data)" )
         guard maResponse.data.count > 0 else {
             throw NFCPassportReaderError.InvalidMRZKey
         }
-        
+
         let (KSenc, KSmac, ssc) = try self.sessionKeys(data: [UInt8](maResponse.data))
         tagReader.secureMessaging = SecureMessaging(ksenc: KSenc, ksmac: KSmac, ssc: ssc)
         //Logger.bac.debug( "BACHandler - complete" )

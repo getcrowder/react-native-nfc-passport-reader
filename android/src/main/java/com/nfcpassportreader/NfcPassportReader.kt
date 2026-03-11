@@ -12,6 +12,8 @@ import org.jmrtd.PassportService
 import org.jmrtd.lds.CardSecurityFile
 import org.jmrtd.lds.PACEInfo
 
+class NfcReadException(val errorCode: String, message: String, cause: Throwable? = null) : Exception(message, cause)
+
 class NfcPassportReader {
   fun readPassport(
     isoDep: IsoDep,
@@ -113,47 +115,45 @@ class NfcPassportReader {
         Log.d("NFC_DEBUG", "DG11 not available or failed to read: ${e.message}")
       }
 
-      // Try to read SOD (optional)
-      try {
-        val sodBytes = service.getInputStream(PassportService.EF_SOD).readBytes()
-        rawDataGroups["SOD"] = Base64.encodeToString(sodBytes, Base64.NO_WRAP)
-        Log.d("NFC_DEBUG", "SOD read successfully (${sodBytes.size} bytes)")
-      } catch (e: Exception) {
-        Log.d("NFC_DEBUG", "SOD not available or failed to read: ${e.message}")
-      }
+      // Read SOD (mandatory - contains signed hashes for integrity verification)
+      val sodBytes = service.getInputStream(PassportService.EF_SOD).readBytes()
+      rawDataGroups["SOD"] = Base64.encodeToString(sodBytes, Base64.NO_WRAP)
+      Log.d("NFC_DEBUG", "SOD read successfully (${sodBytes.size} bytes)")
 
-      // Try to read DG2 (optional)
-      try {
-        val dg2Bytes = service.getInputStream(PassportService.EF_DG2).readBytes()
-        rawDataGroups["DG2"] = Base64.encodeToString(dg2Bytes, Base64.NO_WRAP)
-        Log.d("NFC_DEBUG", "DG2 read successfully (${dg2Bytes.size} bytes)")
-      } catch (e: Exception) {
-        Log.d("NFC_DEBUG", "DG2 not available or failed to read: ${e.message}")
-      }
+      // Read DG2 (mandatory - contains facial image)
+      val dg2Bytes = service.getInputStream(PassportService.EF_DG2).readBytes()
+      rawDataGroups["DG2"] = Base64.encodeToString(dg2Bytes, Base64.NO_WRAP)
+      Log.d("NFC_DEBUG", "DG2 read successfully (${dg2Bytes.size} bytes)")
 
       return nfcResult
     } catch (e: CardServiceException) {
       Log.d("NFC_DEBUG", "CardServiceException during NFC reading: ${e.message}")
       e.printStackTrace()
 
-      // Handle specific APDU errors
-      when {
-        e.message?.contains("6A82") == true -> {
-          Log.d("NFC_DEBUG", "FILE NOT FOUND error - some data groups may not exist on this passport")
-          throw Exception("Passport reading failed: Some data groups listed in passport are not accessible or do not exist. This is common with certain passport types. Error: ${e.message}")
-        }
-        e.message?.contains("6982") == true -> {
-          Log.d("NFC_DEBUG", "SECURITY STATUS NOT SATISFIED error - access denied to some data groups")
-          throw Exception("Passport reading failed: Access denied to some data groups. This passport may require special security access for certain files. Error: ${e.message}")
-        }
-        else -> {
-          throw Exception("Card service error during passport reading: ${e.message}")
-        }
+      val msg = e.message ?: ""
+      val errorCode = when {
+        // BAC/PACE mutual authentication failure
+        msg.contains("Mutual authentication failed", ignoreCase = true) ||
+        msg.contains("6300") ||
+        msg.contains("6985") -> "INVALID_MRZ_KEY"
+        // Tag lost / connection error
+        msg.contains("Tag was lost", ignoreCase = true) ||
+        msg.contains("IOException", ignoreCase = true) ||
+        msg.contains("transceive", ignoreCase = true) -> "TAG_LOST"
+        else -> "READ_FAILED"
       }
+
+      throw NfcReadException(errorCode, "Card service error during passport reading: $msg", e)
+    } catch (e: NfcReadException) {
+      throw e
+    } catch (e: java.io.IOException) {
+      Log.d("NFC_DEBUG", "IOException during NFC reading: ${e.message}")
+      e.printStackTrace()
+      throw NfcReadException("TAG_LOST", "Connection lost during passport reading: ${e.message}", e)
     } catch (e: Exception) {
       Log.d("NFC_DEBUG", "General exception during NFC reading: ${e.message}")
       e.printStackTrace()
-      throw Exception("Failed to read passport data: ${e.message}")
+      throw NfcReadException("READ_FAILED", "Failed to read passport data: ${e.message}", e)
     }
   }
 }

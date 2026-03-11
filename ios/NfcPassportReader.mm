@@ -9,6 +9,8 @@ RCT_EXTERN_METHOD(startReading
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(stopReading)
+
 RCT_EXTERN_METHOD(isNfcSupported
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject)

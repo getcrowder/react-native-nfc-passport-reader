@@ -114,7 +114,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
           NfcAdapter.STATE_OFF -> {
             sendEvent("onNfcStateChanged", "off")
             if (isReading) {
-              reject(Exception("NFC disabled"))
+              reject(NfcReadException("NFC_DISABLED", "NFC disabled"))
             }
           }
 
@@ -220,7 +220,19 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
   private fun reject(e: Exception) {
     isReading = false
     bacKey = null
-    _promise?.reject(e)
+    val code = when (e) {
+      is NfcReadException -> e.errorCode
+      else -> {
+        val msg = e.message ?: ""
+        when {
+          msg.contains("NFC disabled", ignoreCase = true) -> "NFC_DISABLED"
+          msg.contains("NFC tag is null", ignoreCase = true) ||
+          msg.contains("IsoDep", ignoreCase = true) -> "TAG_LOST"
+          else -> "READ_FAILED"
+        }
+      }
+    }
+    _promise?.reject(code, e.message, e)
     _promise = null
     isProcessingTag = false
     disableForegroundDispatchIfNeeded()
@@ -254,7 +266,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
         }
 
         if (documentNo == null || expiryDate == null || birthDate == null) {
-          reject(Exception("BAC key is not valid: documentNo, expiryDate, and birthDate are required"))
+          reject(NfcReadException("INVALID_BAC_KEY", "BAC key is not valid: documentNo, expiryDate, and birthDate are required"))
           return
         }
 
@@ -268,10 +280,10 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
           enableForegroundDispatchIfNeeded()
         }
       } ?: run {
-        reject(Exception("BAC key is null"))
+        reject(NfcReadException("INVALID_BAC_KEY", "BAC key is null"))
       }
     } ?: run {
-      reject(Exception("ReadableMap is null"))
+      reject(NfcReadException("INVALID_BAC_KEY", "ReadableMap is null"))
     }
   }
 

@@ -149,11 +149,28 @@ class NfcPassportReader: NSObject {
 
         resolve(result)
       } catch let error as NFCPassportReaderError {
-        reject("ERROR_READ_PASSPORT", "Error reading passport: \(error.errorDescription ?? error.localizedDescription)", error)
+        let errorCode: String
+        switch error {
+        case .InvalidMRZKey:
+          errorCode = "INVALID_MRZ_KEY"
+        case .ConnectionError:
+          errorCode = "TAG_LOST"
+        case .TimeOutError:
+          errorCode = "TIMEOUT"
+        case .UserCanceled:
+          errorCode = "USER_CANCELED"
+        default:
+          errorCode = "READ_FAILED"
+        }
+        reject(errorCode, "Error reading passport: \(error.errorDescription ?? error.localizedDescription)", error)
       } catch {
-        reject("ERROR_READ_PASSPORT", "Error reading passport: \(error.localizedDescription)", error)
+        reject("READ_FAILED", "Error reading passport: \(error.localizedDescription)", error)
       }
     }
+  }
+
+  @objc func stopReading() {
+    passportReader.stopReading()
   }
 
   func handleProgress(percentualProgress: Int) -> String {

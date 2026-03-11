@@ -93,7 +93,7 @@ public class PassportReader : NSObject {
     }
     
     public func readPassport( mrzKey : String, tags : [DataGroupId] = [], aaChallenge: [UInt8]? = nil, skipSecureElements : Bool = true, skipCA : Bool = false, skipAA : Bool = false, skipPACE : Bool = false, useExtendedMode : Bool = false, customDisplayMessage : ((NFCViewDisplayMessage) -> String?)? = nil) async throws -> NFCPassportModel {
-        
+
         // Clean up any previous session before starting a new one
         self.shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = false
         if let existingSession = self.readerSession {
@@ -136,11 +136,11 @@ public class PassportReader : NSObject {
         
         if NFCTagReaderSession.readingAvailable {
             readerSession = NFCTagReaderSession(pollingOption: [.iso14443], delegate: self, queue: nil)
-            
+
             self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.requestPresentPassport )
             readerSession?.begin()
         }
-        
+
         return try await withCheckedThrowingContinuation({ (continuation: NFCCheckedContinuation) in
             self.nfcContinuation = continuation
         })
@@ -170,7 +170,7 @@ extension PassportReader : NFCTagReaderSessionDelegate {
 
             self.shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = false
 
-            // NFC sheet dismissed after a successful read — resolve the pending continuation now.
+            // NFC session fully invalidated — resolve the pending continuation now.
             if let passport = self.successPassport {
                 self.successPassport = nil
                 nfcContinuation?.resume(returning: passport)
@@ -224,10 +224,10 @@ extension PassportReader : NFCTagReaderSessionDelegate {
         Task { [passportTag] in
             do {
                 try await session.connect(to: tag)
-                
+
                 //Logger.passportReader.debug( "tagReaderSession:connected to tag - starting authentication" )
                 self.updateReaderSessionMessage( alertMessage: NFCViewDisplayMessage.authenticatingWithPassport(0) )
-                
+
                 let tagReader = TagReader(tag:passportTag)
                 
                 if let newAmount = self.dataAmountToReadOverride {
@@ -351,14 +351,11 @@ extension PassportReader {
 
     func doBACAuthentication(tagReader : TagReader) async throws {
         self.currentlyReadingDataGroup = nil
-        
-        //Logger.passportReader.info( "Starting Basic Access Control (BAC)" )
-        
+
         self.passport.BACStatus = .failed
 
         self.bacHandler = BACHandler( tagReader: tagReader )
         try await bacHandler?.performBACAndGetSessionKeys( mrzKey: mrzKey )
-        //Logger.passportReader.info( "Basic Access Control (BAC) - SUCCESS!" )
 
         self.passport.BACStatus = .success
     }
@@ -440,14 +437,12 @@ extension PassportReader {
                 //Logger.passportReader.error( "ERROR - \(errMsg)" )
                 var redoBAC = false
                 if errMsg == "Session invalidated" || errMsg == "Class not supported" || errMsg == "Tag connection lost" || errMsg == "Tag response error / no response" {
-                    // Check if we have done Chip Authentication, if so, set it to nil and try to redo BAC
                     if self.caHandler != nil {
                         self.caHandler = nil
-                        redoBAC = true
-                    } else {
-                        // Can't go any more!
-                        throw error
                     }
+                    // Re-establish BAC and retry — the chip may have dropped the
+                    // connection after a previous failed BAC attempt.
+                    redoBAC = true
                 } else if errMsg == "Security status not satisfied" || errMsg == "File not found" {
                     // Can't read this element as we aren't allowed - remove it and return out so we re-do BAC
                     self.dataGroupsToRead.removeFirst()
@@ -478,9 +473,15 @@ extension PassportReader {
         throw nfcPassportReaderError
     }
 
+    public func stopReading() {
+        self.shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = true
+        self.readerSession?.invalidate()
+        self.readerSession = nil
+        nfcContinuation?.resume(throwing: NFCPassportReaderError.UserCanceled)
+        nfcContinuation = nil
+    }
+
     func invalidateSession(errorMessage: NFCViewDisplayMessage, error: NFCPassportReaderError) {
-        // Mark the next 'invalid session' error as not reportable (we're about to cause it by invalidating the
-        // session). The real error is reported back with the call to the completed handler
         self.shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = true
         self.readerSession?.invalidate(errorMessage: self.nfcViewDisplayMessageHandler?(errorMessage) ?? errorMessage.description)
         nfcContinuation?.resume(throwing: error)
