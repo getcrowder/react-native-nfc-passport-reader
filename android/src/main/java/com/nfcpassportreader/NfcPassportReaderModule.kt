@@ -42,6 +42,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
   private var skipPACE = true
   private var skipCA = false
   private var skipAA = false
+  private var aaChallengeBase64: String? = null
   private var isReading = false
   private var isProcessingTag = false
   private var isForegroundDispatchEnabled = false
@@ -189,7 +190,8 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
                 bacKey!!,
                 skipPACE,
                 skipCA,
-                skipAA
+                skipAA,
+                aaChallengeBase64
               )
 
               val map = result.serializeToMap()
@@ -200,6 +202,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
               isReading = false
               isProcessingTag = false
               bacKey = null
+              aaChallengeBase64 = null
               disableForegroundDispatchIfNeeded()
             } catch (e: Exception) {
               reject(e)
@@ -220,6 +223,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
   private fun reject(e: Exception) {
     isReading = false
     bacKey = null
+    aaChallengeBase64 = null
     val code = when (e) {
       is NfcReadException -> e.errorCode
       else -> {
@@ -247,6 +251,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
       skipPACE = !readableMap.hasKey("skipPACE") || readableMap.getBoolean("skipPACE")
       skipCA = readableMap.hasKey("skipCA") && readableMap.getBoolean("skipCA")
       skipAA = readableMap.hasKey("skipAA") && readableMap.getBoolean("skipAA")
+      aaChallengeBase64 = if (readableMap.hasKey("aaChallenge")) readableMap.getString("aaChallenge") else null
 
       bacKey?.let {
         val documentNo = it.getString("documentNo")
@@ -295,6 +300,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
     }
     isReading = false
     bacKey = null
+    aaChallengeBase64 = null
     isProcessingTag = false
     currentActivity?.runOnUiThread {
       disableForegroundDispatchIfNeeded()

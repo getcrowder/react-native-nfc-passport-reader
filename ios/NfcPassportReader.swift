@@ -32,6 +32,8 @@ class NfcPassportReader: NSObject {
     let skipCA = options["skipCA"] as? Bool ?? false
     let useExtendedMode = options["useExtendedMode"] as? Bool ?? false
     let skipAA = options["skipAA"] as? Bool ?? false
+    let aaChallengeBase64 = options["aaChallenge"] as? String
+    let aaChallenge: [UInt8]? = aaChallengeBase64.flatMap { Data(base64Encoded: $0).map { [UInt8]($0) } }
 
     let documentNo = bacKey?["documentNo"] as? String
     let expiryDate = bacKey?["expiryDate"] as? String
@@ -92,6 +94,7 @@ class NfcPassportReader: NSObject {
         let passport = try await self.passportReader.readPassport(
           mrzKey: mrzKey,
           tags: finalTags,
+          aaChallenge: aaChallenge,
           skipCA: skipCA,
           skipAA: skipAA,
           skipPACE: skipPACE,
@@ -133,6 +136,12 @@ class NfcPassportReader: NSObject {
         
         if passport.activeAuthenticationSupported && !skipAA {
           authStatus["activeAuthenticationPassed"] = passport.activeAuthenticationPassed
+          if !passport.activeAuthenticationSignature.isEmpty {
+            authStatus["aaSignature"] = Data(passport.activeAuthenticationSignature).base64EncodedString()
+          }
+          if !passport.activeAuthenticationChallenge.isEmpty {
+            authStatus["aaChallenge"] = Data(passport.activeAuthenticationChallenge).base64EncodedString()
+          }
         }
 
         let result: NSMutableDictionary = [

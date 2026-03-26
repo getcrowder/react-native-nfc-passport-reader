@@ -327,8 +327,8 @@ extension PassportReader {
         self.shouldNotReportNextReaderSessionInvalidationErrorUserCanceled = true
         self.readerSession?.invalidate()
 
-        // If we have a masterlist url set then use that and verify the passport now
-        self.passport.verifyPassport(masterListURL: self.masterListURL, useCMSVerification: self.passiveAuthenticationUsesOpenSSL)
+        // PA is validated by the backend via SOD. Skipping local verification saves ~200-500ms.
+        // self.passport.verifyPassport(masterListURL: self.masterListURL, useCMSVerification: self.passiveAuthenticationUsesOpenSSL)
 
         return self.passport
     }
@@ -338,12 +338,12 @@ extension PassportReader {
         guard self.passport.activeAuthenticationSupported else {
             return
         }
+        guard let challenge = aaChallenge else {
+            // No backend-provided challenge — skip AA (result not verifiable server-side)
+            return
+        }
         self.updateReaderSessionMessage(alertMessage: NFCViewDisplayMessage.activeAuthentication)
 
-        //Logger.passportReader.info( "Performing Active Authentication" )
-
-        let challenge = aaChallenge ?? generateRandomUInt8Array(8)
-        //Logger.passportReader.debug( "Generated Active Authentication challange - \(binToHexRep(challenge))")
         let response = try await tagReader.doInternalAuthentication(challenge: challenge, useExtendedMode: useExtendedMode)
         self.passport.verifyActiveAuthentication( challenge:challenge, signature:response.data )
     }

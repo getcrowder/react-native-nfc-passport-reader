@@ -47,22 +47,28 @@ export type NfcPassportReaderConfig = {
    * Useful for some passports where Active Authentication responses exceed 256 bytes.
    */
   useExtendedMode?: boolean;
+  /** Base64-encoded 8-byte challenge for Active Authentication (from backend) */
+  aaChallenge?: string;
 };
 
 export type AuthenticationStatus = {
   method: 'PACE' | 'BAC';
-  /** 
+  /**
    * Chip Authentication (CA) - uses DG14
    * Establishes an encrypted channel with stronger keys
    * undefined = not supported/attempted, true = passed, false = failed
    */
   chipAuthenticationPassed?: boolean;
   /**
-   * Active Authentication (AA) - uses DG15  
+   * Active Authentication (AA) - uses DG15
    * Proves the chip is genuine (not cloned) via challenge-response
    * undefined = not supported/attempted, true = passed, false = failed
    */
   activeAuthenticationPassed?: boolean;
+  /** Base64-encoded raw AA signature from the chip (INTERNAL AUTHENTICATE response) */
+  aaSignature?: string;
+  /** Base64-encoded challenge used for AA (echoed back for backend verification) */
+  aaChallenge?: string;
 };
 
 export type NfcPassportResult = {

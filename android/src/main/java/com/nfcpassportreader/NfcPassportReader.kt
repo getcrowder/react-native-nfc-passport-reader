@@ -11,6 +11,10 @@ import org.jmrtd.BACKeySpec
 import org.jmrtd.PassportService
 import org.jmrtd.lds.CardSecurityFile
 import org.jmrtd.lds.PACEInfo
+import org.jmrtd.lds.icao.DG14File
+import org.jmrtd.lds.icao.DG15File
+import java.io.ByteArrayInputStream
+import java.security.SecureRandom
 
 class NfcReadException(val errorCode: String, message: String, cause: Throwable? = null) : Exception(message, cause)
 
@@ -20,7 +24,8 @@ class NfcPassportReader {
     bacKey: BACKeySpec,
     skipPACE: Boolean = true,
     skipCA: Boolean = false,
-    skipAA: Boolean = false
+    skipAA: Boolean = false,
+    aaChallengeBase64: String? = null
   ): NfcResult {
     try {
       // Passport BAC/DG reads can take longer than typical tag scans; a low timeout
@@ -90,17 +95,51 @@ class NfcPassportReader {
       val rawDataGroups = HashMap<String, String>()
       nfcResult.dataGroups = rawDataGroups
 
-      // Note: CA/AA are not implemented on Android yet; null means not attempted.
-      nfcResult.authentication = AuthenticationStatus(
-        method = if (paceSucceeded) "PACE" else "BAC",
-        chipAuthenticationPassed = null,
-        activeAuthenticationPassed = null
-      )
+      // --- Chip Authentication (CA) ---
+      // Must run BEFORE reading data groups: CA re-keys the session with stronger keys.
+      var chipAuthPassed: Boolean? = null
+      if (!skipCA) {
+        try {
+          Log.d("NFC_DEBUG", "Attempting Chip Authentication...")
+          val dg14Bytes = service.getInputStream(PassportService.EF_DG14).readBytes()
+          rawDataGroups["DG14"] = Base64.encodeToString(dg14Bytes, Base64.NO_WRAP)
+          Log.d("NFC_DEBUG", "DG14 read successfully (${dg14Bytes.size} bytes)")
 
-      Log.d(
-        "NFC_DEBUG",
-        "🔐 Authentication Status: method=${nfcResult.authentication.method}, skipCA=$skipCA, skipAA=$skipAA (CA/AA not implemented on Android)"
-      )
+          val dg14File = DG14File(ByteArrayInputStream(dg14Bytes))
+          val chipAuthPublicKeyInfos = dg14File.chipAuthenticationPublicKeyInfos
+
+          if (chipAuthPublicKeyInfos.isNotEmpty()) {
+            try {
+              val chipAuthInfos = dg14File.chipAuthenticationInfos
+              val publicKeyInfo = chipAuthPublicKeyInfos.first()
+              val keyId = publicKeyInfo.keyId
+              val oid = if (chipAuthInfos.isNotEmpty()) {
+                chipAuthInfos.first().objectIdentifier
+              } else {
+                publicKeyInfo.objectIdentifier
+              }
+              service.doEACCA(keyId, oid, publicKeyInfo.objectIdentifier, publicKeyInfo.subjectPublicKey)
+              chipAuthPassed = true
+              Log.d("NFC_DEBUG", "Chip Authentication SUCCEEDED")
+            } catch (e: Exception) {
+              Log.d("NFC_DEBUG", "Chip Authentication FAILED: ${e.message}")
+              chipAuthPassed = false
+              // Re-establish BAC to continue reading
+              try {
+                service.doBAC(bacKey)
+                Log.d("NFC_DEBUG", "BAC re-established after CA failure")
+              } catch (bacE: Exception) {
+                Log.w("NFC_DEBUG", "BAC re-establishment failed: ${bacE.message}")
+              }
+            }
+          } else {
+            Log.d("NFC_DEBUG", "DG14 present but no ChipAuthenticationPublicKeyInfo found")
+          }
+        } catch (e: Exception) {
+          Log.d("NFC_DEBUG", "DG14 not available: ${e.message}")
+          // chipAuthPassed remains null — CA not evaluable
+        }
+      }
 
       // Read DG1 (mandatory - contains MRZ data)
       val dg1Bytes = service.getInputStream(PassportService.EF_DG1).readBytes()
@@ -124,6 +163,59 @@ class NfcPassportReader {
       val dg2Bytes = service.getInputStream(PassportService.EF_DG2).readBytes()
       rawDataGroups["DG2"] = Base64.encodeToString(dg2Bytes, Base64.NO_WRAP)
       Log.d("NFC_DEBUG", "DG2 read successfully (${dg2Bytes.size} bytes)")
+
+      // --- Active Authentication (AA) ---
+      // Runs AFTER all DGs are read (AA is read-only, doesn't affect session).
+      var activeAuthPassed: Boolean? = null
+      var aaSignatureBase64: String? = null
+      var aaChallengeUsedBase64: String? = null
+
+      if (!skipAA) {
+        try {
+          Log.d("NFC_DEBUG", "Attempting Active Authentication...")
+          val dg15Bytes = service.getInputStream(PassportService.EF_DG15).readBytes()
+          rawDataGroups["DG15"] = Base64.encodeToString(dg15Bytes, Base64.NO_WRAP)
+          Log.d("NFC_DEBUG", "DG15 read successfully (${dg15Bytes.size} bytes)")
+
+          val dg15File = DG15File(ByteArrayInputStream(dg15Bytes))
+          val aaPublicKey = dg15File.publicKey
+
+          if (aaPublicKey != null && aaChallengeBase64 != null) {
+            // Only attempt AA with backend-provided challenge
+            val challenge = Base64.decode(aaChallengeBase64, Base64.NO_WRAP)
+            aaChallengeUsedBase64 = Base64.encodeToString(challenge, Base64.NO_WRAP)
+
+            try {
+              val response = service.doAA(aaPublicKey, null, "SHA-256", challenge)
+              aaSignatureBase64 = Base64.encodeToString(response.response, Base64.NO_WRAP)
+              activeAuthPassed = true
+              Log.d("NFC_DEBUG", "Active Authentication SUCCEEDED")
+            } catch (e: Exception) {
+              Log.d("NFC_DEBUG", "Active Authentication FAILED: ${e.message}")
+              activeAuthPassed = false
+            }
+          } else {
+            Log.d("NFC_DEBUG", "DG15 present but no AA challenge found")
+          }
+        } catch (e: Exception) {
+          Log.d("NFC_DEBUG", "DG15 not available: ${e.message}")
+          // activeAuthPassed remains null — AA not evaluable
+        }
+      }
+
+      nfcResult.authentication = AuthenticationStatus(
+        method = if (paceSucceeded) "PACE" else "BAC",
+        chipAuthenticationPassed = chipAuthPassed,
+        activeAuthenticationPassed = activeAuthPassed,
+        aaSignature = aaSignatureBase64,
+        aaChallenge = aaChallengeUsedBase64
+      )
+
+      Log.d(
+        "NFC_DEBUG",
+        "🔐 Authentication Status: method=${nfcResult.authentication.method}, " +
+          "CA=${chipAuthPassed}, AA=${activeAuthPassed}, skipCA=$skipCA, skipAA=$skipAA"
+      )
 
       return nfcResult
     } catch (e: CardServiceException) {

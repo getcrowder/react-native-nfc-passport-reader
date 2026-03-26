@@ -83,7 +83,13 @@ class AuthenticationStatusSerializer : JsonSerializer<AuthenticationStatus> {
     src.activeAuthenticationPassed?.let {
       jsonObject.addProperty("activeAuthenticationPassed", it)
     }
-    
+    src.aaSignature?.let {
+      jsonObject.addProperty("aaSignature", it)
+    }
+    src.aaChallenge?.let {
+      jsonObject.addProperty("aaChallenge", it)
+    }
+
     return jsonObject
   }
 }

@@ -8,5 +8,7 @@ data class NfcResult(
 data class AuthenticationStatus(
   var method: String = "BAC",
   var chipAuthenticationPassed: Boolean? = null,
-  var activeAuthenticationPassed: Boolean? = null
+  var activeAuthenticationPassed: Boolean? = null,
+  var aaSignature: String? = null,
+  var aaChallenge: String? = null
 )
