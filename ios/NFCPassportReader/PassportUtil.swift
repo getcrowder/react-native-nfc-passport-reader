@@ -23,10 +23,6 @@ class PassportUtil: ObservableObject {
     while paddedPassportNumber.count < 9 {
       paddedPassportNumber += "<"
     }
-    
-    print("🔑 MRZ Key Generation:")
-    print("   Original doc number: \(passportNumber) (\(passportNumber.count) chars)")
-    print("   Padded doc number: \(paddedPassportNumber) (\(paddedPassportNumber.count) chars)")
 
     // Calculate checksums using padded passport number
     let passportNrChksum = calcCheckSum(paddedPassportNumber)
