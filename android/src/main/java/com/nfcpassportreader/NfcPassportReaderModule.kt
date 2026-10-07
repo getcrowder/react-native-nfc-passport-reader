@@ -70,7 +70,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
     if (isForegroundDispatchEnabled) return
 
     ensureAdapter()
-    val activity = currentActivity ?: return
+    val activity = reactApplicationContext.currentActivity ?: return
     val nfcAdapter = adapter ?: return
     if (!nfcAdapter.isEnabled) return
 
@@ -97,7 +97,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
     if (!isForegroundDispatchEnabled) return
 
     ensureAdapter()
-    val activity = currentActivity ?: return
+    val activity = reactApplicationContext.currentActivity ?: return
     try {
       adapter?.disableForegroundDispatch(activity)
     } catch (e: Exception) {
@@ -158,11 +158,11 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
     disableForegroundDispatchIfNeeded()
   }
 
-  override fun onActivityResult(p0: Activity?, p1: Int, p2: Int, p3: Intent?) {
+  override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
   }
 
-  override fun onNewIntent(p0: Intent?) {
-    p0?.let { intent ->
+  override fun onNewIntent(intent: Intent) {
+    run {
       if (!isReading) return
       if (isProcessingTag) return
       isProcessingTag = true
@@ -281,7 +281,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
 
         isReading = true
         isProcessingTag = false
-        currentActivity?.runOnUiThread {
+        reactApplicationContext.currentActivity?.runOnUiThread {
           enableForegroundDispatchIfNeeded()
         }
       } ?: run {
@@ -302,7 +302,7 @@ class NfcPassportReaderModule(reactContext: ReactApplicationContext) :
     bacKey = null
     aaChallengeBase64 = null
     isProcessingTag = false
-    currentActivity?.runOnUiThread {
+    reactApplicationContext.currentActivity?.runOnUiThread {
       disableForegroundDispatchIfNeeded()
     }
   }
